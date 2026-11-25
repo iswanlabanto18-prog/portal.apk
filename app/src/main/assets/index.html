@@ -1,0 +1,1735 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Aplikasi Peserta Ujian - Portal Siswa Aman</title>
+  <!-- ANDROID SHIM: fullscreen API diabaikan (kiosk ditangani native), clipboard lewat jembatan Android -->
+  <script>
+  (function () {
+    try {
+      Element.prototype.requestFullscreen = function () { return Promise.resolve(); };
+      Element.prototype.webkitRequestFullscreen = function () {};
+      Document.prototype.exitFullscreen = function () { return Promise.resolve(); };
+      Document.prototype.webkitExitFullscreen = function () {};
+    } catch (e) {}
+    try {
+      if (window.AndroidBridge) {
+        Object.defineProperty(navigator, 'clipboard', {
+          configurable: true,
+          value: { readText: function () { return Promise.resolve(AndroidBridge.getClipboard()); } }
+        });
+      }
+    } catch (e) {}
+  })();
+  </script>
+
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Firebase SDK Compat v10 via CDN -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+  <!-- jsQR Barcode / QR Code Reader CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --bg: #0b1120;
+      --card-bg: #1e293b;
+      --border: #334155;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --danger: #ef4444;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --radius: 16px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Plus Jakarta Sans', sans-serif; user-select: none; -webkit-tap-highlight-color: transparent; }
+    body { background-color: var(--bg); color: var(--text-main); min-height: 100vh; display: flex; flex-direction: column; overflow-x: hidden; }
+
+    /* Top Navbar */
+    .navbar {
+      background: rgba(15, 23, 42, 0.95);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 18px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(8px);
+    }
+    .brand { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 1.05rem; }
+    .brand-badge { background: #2563eb; color: white; padding: 3px 8px; border-radius: 6px; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.05em; }
+    .clock-badge { background: #0f172a; border: 1px solid var(--border); padding: 5px 12px; border-radius: 9999px; font-size: 0.8rem; font-family: 'JetBrains Mono', monospace; font-weight: 700; color: #38bdf8; }
+
+    /* Main Container */
+    .main-wrap { flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px 16px; }
+    .auth-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius); width: 100%; max-width: 480px; padding: 28px 22px; box-shadow: 0 20px 40px rgba(0,0,0,0.45); text-align: center; }
+
+    .step-icon-wrap {
+      width: 56px;
+      height: 56px;
+      margin: 0 auto 14px;
+      border-radius: 14px;
+      background: rgba(37, 99, 235, 0.15);
+      border: 1.5px solid rgba(59, 130, 246, 0.35);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #38bdf8;
+      font-size: 1.6rem;
+    }
+
+    .step-title { font-size: 1.3rem; font-weight: 800; margin-bottom: 6px; color: #fff; }
+    .step-desc { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 22px; line-height: 1.45; }
+
+    /* Inputs & Buttons */
+    .form-group { text-align: left; margin-bottom: 16px; }
+    label { display: block; font-size: 0.8rem; font-weight: 700; margin-bottom: 6px; color: #cbd5e1; }
+    
+    .input-wrap-with-btn {
+      position: relative;
+      display: flex;
+      gap: 8px;
+    }
+    
+    input { 
+      width: 100%; 
+      padding: 12px 14px; 
+      font-size: 0.95rem; 
+      background: #0f172a; 
+      border: 1.5px solid var(--border); 
+      border-radius: 10px; 
+      color: #fff; 
+      outline: none; 
+      transition: 0.2s; 
+      user-select: text; 
+    }
+    input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25); }
+    
+    .input-doc-id {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.98rem;
+      letter-spacing: 0.05em;
+    }
+
+    /* 4-Digit Dedicated PIN Input */
+    .input-pin-4 { 
+      font-family: 'JetBrains Mono', monospace; 
+      font-size: 1.8rem; 
+      letter-spacing: 0.35em; 
+      text-align: center; 
+      font-weight: 800;
+      padding: 10px 14px;
+      background: #020617;
+      border: 2px solid #3b82f6;
+      border-radius: 12px;
+      color: #38bdf8;
+    }
+    .input-pin-4:focus {
+      border-color: #60a5fa;
+      box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.25);
+    }
+
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: 100%; padding: 12px; font-size: 0.92rem; font-weight: 700; border-radius: 10px; cursor: pointer; border: none; transition: 0.2s; }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-primary:hover:not(:disabled) { background: var(--primary-hover); }
+    .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+    .btn-outline { background: #0f172a; border: 1.5px solid var(--border); color: #cbd5e1; }
+    .btn-outline:hover { background: #1e293b; border-color: #475569; }
+    .btn-paste {
+      padding: 0 16px;
+      white-space: nowrap;
+      background: #1e3a8a;
+      border: 1px solid #3b82f6;
+      color: #93c5fd;
+      font-size: 0.8rem;
+      font-weight: 700;
+      border-radius: 10px;
+      cursor: pointer;
+    }
+    .btn-paste:hover { background: #1d4ed8; color: #fff; }
+
+    .btn-danger { background: #dc2626; color: white; }
+    .btn-danger:hover { background: #b91c1c; }
+    .btn-sm { padding: 8px 12px; font-size: 0.78rem; }
+
+    /* Security Box & Volume Meter Styles */
+    .security-notice-box {
+      background: linear-gradient(135deg, rgba(30, 58, 138, 0.4), rgba(15, 23, 42, 0.8));
+      border: 1.5px solid #3b82f6;
+      border-radius: 12px;
+      padding: 16px;
+      text-align: left;
+      margin-bottom: 16px;
+    }
+    .security-badge-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #60a5fa;
+      font-weight: 800;
+      font-size: 0.88rem;
+      margin-bottom: 8px;
+    }
+    .volume-meter-container {
+      background: #0f172a;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      margin-top: 10px;
+    }
+    .volume-bar-bg {
+      position: relative;
+      height: 18px;
+      background: #1e293b;
+      border-radius: 9999px;
+      overflow: hidden;
+      margin: 8px 0;
+      border: 1px solid #334155;
+    }
+    .volume-bar-fill {
+      height: 100%;
+      width: 80%;
+      background: linear-gradient(90deg, #10b981 0%, #3b82f6 70%, #f59e0b 85%, #ef4444 100%);
+      border-radius: 9999px;
+      transition: width 0.3s ease;
+    }
+    .volume-threshold-line {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 70%;
+      width: 3px;
+      background: #ef4444;
+      box-shadow: 0 0 8px #ef4444;
+    }
+    .security-checkbox-label {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      text-align: left;
+      font-size: 0.8rem;
+      color: #cbd5e1;
+      cursor: pointer;
+      margin-top: 12px;
+      background: rgba(15, 23, 42, 0.6);
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid #334155;
+    }
+    .security-checkbox-label input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      margin-top: 2px;
+      accent-color: #2563eb;
+      cursor: pointer;
+    }
+
+    /* Exam Screen Layout */
+    #exam-screen { display: none; width: 100%; height: 100vh; flex-direction: column; background: #fff; }
+    .exam-header {
+      background: #0b1120;
+      color: #fff;
+      padding: 8px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid #2563eb;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    }
+    .exam-title-box { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .exam-title-text { font-size: 0.9rem; font-weight: 800; max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #fff; }
+    .exam-zone-badge { background: #1e3a8a; color: #93c5fd; padding: 2px 7px; border-radius: 6px; font-size: 0.7rem; font-weight: 700; }
+    
+    .security-live-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      color: #34d399;
+      padding: 2px 6px;
+      border-radius: 6px;
+      font-size: 0.7rem;
+      font-weight: 700;
+    }
+    .volume-live-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: rgba(56, 189, 248, 0.15);
+      border: 1px solid rgba(56, 189, 248, 0.4);
+      color: #38bdf8;
+      padding: 2px 6px;
+      border-radius: 6px;
+      font-size: 0.7rem;
+      font-weight: 700;
+    }
+
+    .exam-timer { font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; font-weight: 700; color: #4ade80; background: #022c22; padding: 3px 8px; border-radius: 6px; border: 1px solid #059669; }
+
+    .exam-frame-container { flex: 1; width: 100%; height: 100%; position: relative; }
+    #gform-frame { width: 100%; height: 100%; border: none; }
+
+    /* Alert and Warnings */
+    .warning-banner {
+      background: #7f1d1d;
+      color: #fee2e2;
+      border-bottom: 2px solid #ef4444;
+      padding: 9px 14px;
+      font-size: 0.82rem;
+      text-align: center;
+      font-weight: 700;
+      display: none;
+      animation: pulseAlert 1s infinite alternate;
+    }
+    @keyframes pulseAlert {
+      0% { background: #7f1d1d; }
+      100% { background: #991b1b; }
+    }
+
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.88); backdrop-filter: blur(6px); display: none; align-items: center; justify-content: center; z-index: 999; padding: 16px; }
+    .modal-box { background: #1e293b; border: 1px solid var(--border); border-radius: 16px; padding: 22px; max-width: 440px; width: 100%; text-align: center; }
+
+    /* Hard Lockout Screen */
+    .lockout-screen {
+      position: fixed;
+      inset: 0;
+      background: #020617;
+      z-index: 10000;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      text-align: center;
+    }
+    .lockout-card {
+      background: #0f172a;
+      border: 2px solid #ef4444;
+      border-radius: 18px;
+      padding: 30px 22px;
+      max-width: 440px;
+      width: 100%;
+      box-shadow: 0 0 50px rgba(239, 68, 68, 0.4);
+    }
+    .lockout-icon { font-size: 3.2rem; margin-bottom: 10px; }
+
+    .badge-info { background: #1e3a8a; color: #60a5fa; font-size: 0.75rem; padding: 4px 10px; border-radius: 6px; display: inline-block; margin-bottom: 8px; }
+    
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      margin-bottom: 14px;
+    }
+    .status-pill-ok { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+
+    .info-copy-banner {
+      background: rgba(37, 99, 235, 0.1);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 0.76rem;
+      color: #93c5fd;
+      text-align: left;
+      margin-bottom: 16px;
+      line-height: 1.45;
+    }
+  </style>
+</head>
+<body oncontextmenu="return false;" oncopy="return false;" oncut="return false;">
+
+  <!-- NAVBAR UTAMA -->
+  <nav class="navbar" id="top-navbar">
+    <div class="brand">
+      <span>Portal Siswa</span>
+      <span class="brand-badge">Kiosk CBT</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <span class="volume-live-badge">🔊 Vol &gt;70%</span>
+      <div class="clock-badge" id="client-clock">WIT: --:--:--</div>
+      <button type="button" class="btn btn-outline" style="padding: 4px 10px; font-size: 0.75rem; border-color: rgba(239, 68, 68, 0.4); color: #fca5a5; width: auto;" onclick="logoutSesiClient()" title="Keluar / Reset Sesi Siswa">
+        🚪 Logout
+      </button>
+    </div>
+  </nav>
+
+  <!-- LAYAR 1: MASUKKAN ID ATAU PINDAI BARCODE / QR -->
+  <main class="main-wrap" id="screen-step1">
+    <div class="auth-card">
+      <div id="conn-status" class="status-pill status-pill-ok">
+        <span style="width: 6px; height: 6px; border-radius: 50%; background: currentColor;"></span>
+        <span>Sistem Ujian Aman Terhubung</span>
+      </div>
+
+      <div class="step-icon-wrap">⚡</div>
+
+      <h2 class="step-title">Buka Ujian Siswa</h2>
+      <p class="step-desc">Ketik/tempel ID Ujian atau Pindai Barcode. PIN Masuk ditangkap <strong>otomatis</strong> dan langsung membuka halaman soal ujian.</p>
+
+      <div style="background: rgba(16, 185, 129, 0.12); border: 1.5px solid rgba(16, 185, 129, 0.35); border-radius: 12px; padding: 10px 14px; margin-bottom: 16px; font-size: 0.78rem; color: #6ee7b7; text-align: left; display: flex; align-items: center; gap: 10px;">
+        <span style="font-size: 1.25rem;">🔑</span>
+        <span><strong>PIN Masuk Otomatis:</strong> Anda tidak perlu mengetik PIN Masuk secara manual. Cukup masukkan ID Ujian untuk langsung membuka soal.</span>
+      </div>
+
+      <!-- Mode Selector Tabs -->
+      <div style="display: flex; gap: 6px; margin-bottom: 16px;">
+        <button type="button" id="tab-mode-paste" class="btn btn-sm btn-primary" style="flex: 1;" onclick="switchAccessMode('paste')">
+          📋 Masukkan / Tempel ID
+        </button>
+        <button type="button" id="tab-mode-camera" class="btn btn-sm btn-outline" style="flex: 1;" onclick="switchAccessMode('camera')">
+          📷 Pindai Barcode / QR
+        </button>
+      </div>
+
+      <!-- Camera Scanner Container (Scene Barcode) -->
+      <div id="camera-scan-box" style="display: none; margin-bottom: 16px; position: relative; background: #000; border-radius: 14px; overflow: hidden; border: 2px solid #3b82f6;">
+        <video id="qr-video" style="width: 100%; height: 210px; object-fit: cover;" playsinline></video>
+        <canvas id="qr-canvas" style="display: none;"></canvas>
+        <div style="position: absolute; inset: 0; border: 2px dashed #60a5fa; margin: 20px; border-radius: 12px; pointer-events: none; display: flex; align-items: center; justify-content: center;">
+          <span style="background: rgba(15, 23, 42, 0.85); color: #38bdf8; font-size: 0.72rem; padding: 4px 8px; border-radius: 6px; font-weight: 700;">
+            Arahkan Kamera ke Barcode / QR Code Ujian
+          </span>
+        </div>
+      </div>
+
+      <div class="form-group" id="manual-input-group">
+        <label for="input-exam-id">ID Dokumen Ujian (Firestore / Link)</label>
+        <div class="input-wrap-with-btn">
+          <input type="text" id="input-exam-id" class="input-doc-id" placeholder="Misal: aB8kx9Q2mL (Ketik / Tempel ID)" maxlength="500" autocomplete="off" onkeydown="if(event.key==='Enter'){cariDataUjian();}">
+          <button type="button" class="btn-paste" onclick="pasteFromClipboard()" title="Tempel langsung dari Clipboard">
+            📋 Tempel ID
+          </button>
+        </div>
+      </div>
+
+      <!-- Tombol Cepat ID Terbaru (Jika ada di browser) -->
+      <div id="quick-fill-box" style="margin-bottom: 12px; display: none;">
+        <button type="button" class="btn btn-sm btn-outline" style="width: 100%; font-size: 0.75rem; color: #38bdf8; border-color: rgba(56, 189, 248, 0.4);" onclick="fillLatestExamId()">
+          💡 Gunakan ID Ujian Terbaru: <span id="latest-exam-label" style="font-family: monospace; font-weight: 700;">-</span>
+        </button>
+      </div>
+
+      <button type="button" id="btn-cari-ujian" class="btn btn-primary" style="padding: 14px; font-size: 0.98rem; font-weight: 800;" onclick="cariDataUjian()">
+        🚀 Buka Soal Ujian (PIN Otomatis) ➡️
+      </button>
+
+      <button type="button" class="btn btn-outline" style="margin-top: 10px; border-color: rgba(239, 68, 68, 0.4); color: #fca5a5;" onclick="logoutSesiClient()">
+        🚪 Logout / Keluar Sesi
+      </button>
+
+      <p id="err-step1" style="color: var(--danger); font-size: 0.8rem; margin-top: 14px; display: none; line-height: 1.4; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.25); border-radius: 8px; padding: 10px;"></p>
+    </div>
+  </main>
+
+  <!-- LAYAR 2.5: PROTOKOL KEAMANAN & VERIFIKASI VOLUME (>70%) -->
+  <main class="main-wrap" id="screen-step-security" style="display: none;">
+    <div class="auth-card" style="max-width: 500px;">
+      <div class="security-badge-header" style="justify-content: center;">
+        <span style="font-size: 1.3rem;">🛡️</span>
+        <span style="color: #fff; font-size: 1.15rem;">Protokol Keamanan &amp; Kalibrasi Volume</span>
+      </div>
+
+      <div class="security-notice-box">
+        <div style="color: #fbbf24; font-weight: 800; font-size: 0.85rem; margin-bottom: 6px;">
+          🔊 ATURAN MUTLAK: VOLUME SPEAKER WAJIB DI ATAS 70%
+        </div>
+        <p style="font-size: 0.78rem; color: #cbd5e1; line-height: 1.45;">
+          Perangkat Anda wajib menyalakan suara dengan volume <strong>minimal 70%</strong>. Selama ujian, sistem akan membunyikan sirine peringatan keras jika terdeteksi keluar dari layar atau beralih tab.
+        </p>
+
+        <!-- Visual Volume Level Gauge -->
+        <div class="volume-meter-container">
+          <div style="display: flex; justify-content: space-between; font-size: 0.72rem; font-weight: 700; color: #94a3b8;">
+            <span>0% (Mute)</span>
+            <span style="color: #ef4444;">Batas Wajib: &ge; 70%</span>
+            <span>100%</span>
+          </div>
+
+          <div class="volume-bar-bg">
+            <div class="volume-threshold-line"></div>
+            <div class="volume-bar-fill" id="volume-indicator-bar" style="width: 80%;"></div>
+          </div>
+
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px;">
+            <span style="font-size: 0.74rem; color: #34d399; font-weight: 700;" id="volume-status-label">
+              ✅ Target Terpenuhi: Volume &gt; 70%
+            </span>
+            <button type="button" class="btn btn-sm btn-outline" style="width: auto; padding: 4px 10px; font-size: 0.74rem;" onclick="testVolumeSound()">
+              🔊 Tes Uji Suara
+            </button>
+          </div>
+        </div>
+
+        <!-- Sensor Mikrofon / Akustik Suara Speaker (Opsional) -->
+        <div style="margin-top: 10px; display: flex; align-items: center; justify-content: space-between; background: rgba(2, 6, 23, 0.6); padding: 8px 12px; border-radius: 8px; border: 1px dashed #334155;">
+          <span style="font-size: 0.74rem; color: #94a3b8;">Deteksi Akustik Suara:</span>
+          <button type="button" id="btn-mic-check" class="btn btn-sm btn-outline" style="width: auto; font-size: 0.72rem; padding: 3px 8px;" onclick="checkAcousticVolumeWithMic()">
+            🎙️ Verifikasi Lewat Mic
+          </button>
+          <span id="mic-status-label" style="font-size: 0.74rem; font-weight: 700; color: #38bdf8; display: none;">Terdengar Keras!</span>
+        </div>
+
+        <!-- Aturan Anti-Cheat Ringkas -->
+        <div style="margin-top: 12px; font-size: 0.74rem; color: #94a3b8; line-height: 1.4;">
+          <ul style="list-style-type: none; padding-left: 0;">
+            <li>🚫 <strong>Layar Penuh Terkunci:</strong> Keluar dari mode layar penuh dianggap pelanggaran.</li>
+            <li>🚫 <strong>Larangan Pindah Tab:</strong> Berpindah aplikasi akan memicu sirine pengawas.</li>
+            <li>ℹ️ <strong>Tanpa Batas Blokir:</strong> Pelanggaran dicatat tanpa penguncian permanen.</li>
+          </ul>
+        </div>
+
+        <!-- Checkbox Pernyataan Siswa -->
+        <label class="security-checkbox-label">
+          <input type="checkbox" id="check-volume-agree" onchange="toggleStartExamButton()">
+          <span>Saya menyatakan volume speaker perangkat telah saya atur <strong>di atas 70% (tidak di-mute)</strong> dan siap mengikuti ujian dengan jujur.</span>
+        </label>
+      </div>
+
+      <button type="button" id="btn-start-exam-final" class="btn btn-primary" disabled onclick="masukRuangUjianFullscreen()">
+        🔒 Masuk Layar Penuh &amp; Mulai Ujian
+      </button>
+
+      <button type="button" class="btn btn-outline" style="margin-top: 10px;" onclick="kembaliKePin()">
+        Kembali
+      </button>
+
+      <p id="err-security" style="color: var(--danger); font-size: 0.8rem; margin-top: 10px; display: none;"></p>
+    </div>
+  </main>
+
+  <!-- LAYAR 3: RUANG UJIAN (LOCK/FULLSCREEN DENGAN GOOGLE FORM) -->
+  <div id="exam-screen">
+    <!-- Peringatan Keluar Layar / Tab Switching -->
+    <div class="warning-banner" id="warning-banner">
+      🚨 PERINGATAN: Terdeteksi meninggalkan layar ujian! Sirine aktif &amp; kejadian dicatat pengawas (Pelanggaran tercatat: <span id="violation-count">0</span>).
+    </div>
+
+    <!-- Header Ujian -->
+    <div class="exam-header">
+      <div class="exam-title-box">
+        <span class="exam-title-text" id="active-exam-title">Nama Ujian</span>
+        <span class="exam-zone-badge" id="active-exam-zone">WIT</span>
+        <span class="security-live-badge">🔒 Kiosk Aktif</span>
+        <span class="volume-live-badge" title="Volume wajib di atas 70%">🔊 Vol &gt;70%</span>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end;">
+        <button type="button" class="btn btn-sm btn-outline" style="width: auto; padding: 4px 8px; font-size: 0.72rem; border-color: #38bdf8; color: #38bdf8;" onclick="testVolumeSound()">
+          🔊 Tes
+        </button>
+        <!-- Satu-satunya fitur penghitungan mundur durasi waktu ujian -->
+        <div class="exam-timer" id="exam-countdown-timer" style="background: #0f2942; border-color: #38bdf8; color: #38bdf8; font-weight: 800; padding: 4px 12px; border-radius: 8px; font-size: 0.85rem;" title="Penghitungan Mundur Sisa Waktu Ujian">⏳ Sisa: --:--:--</div>
+        <button type="button" class="btn btn-danger" style="width: auto; padding: 5px 12px; font-size: 0.78rem;" onclick="bukaModalKeluar()" title="Keluar dari Ujian Menggunakan PIN Keluar">
+          🚪 Keluar (PIN)
+        </button>
+      </div>
+    </div>
+
+    <!-- Iframe Google Form -->
+    <div class="exam-frame-container">
+      <iframe id="gform-frame" src="about:blank" allow="autoplay; fullscreen"></iframe>
+    </div>
+  </div>
+
+  <!-- POPUP PERINGATAN KELUAR FULLSCREEN SEMENTARA -->
+  <div class="modal-overlay" id="modal-fullscreen-warning">
+    <div class="modal-box" style="border: 2px solid #ef4444;">
+      <div style="font-size: 2.8rem; margin-bottom: 8px;">⚠️</div>
+      <h3 style="color: #ef4444; font-size: 1.15rem; font-weight: 800; margin-bottom: 8px;">
+        ANDA KELUAR DARI MODE LAYAR PENUH!
+      </h3>
+      <p style="color: #cbd5e1; font-size: 0.82rem; margin-bottom: 16px;">
+        Kembali ke mode layar penuh sekarang juga. Pelanggaran tercatat: <strong id="fs-viol-count" style="color: #ef4444;">1</strong>.
+      </p>
+      <button type="button" class="btn btn-danger" onclick="kembalikanFullscreen()">
+        Kembali ke Layar Penuh Sekarang
+      </button>
+    </div>
+  </div>
+
+  <!-- LAYAR KUNCI KERAS (LOCKOUT KARENA PELANGGARAN) -->
+  <div class="lockout-screen" id="lockout-screen">
+    <div class="lockout-card">
+      <div class="lockout-icon">⛔</div>
+      <h2 style="color: #ef4444; font-size: 1.35rem; font-weight: 800; margin-bottom: 8px;">
+        UJIAN TERKUNCI SEMENTARA!
+      </h2>
+      <p style="color: #cbd5e1; font-size: 0.82rem; margin-bottom: 16px; line-height: 1.5;">
+        Terdeteksi keluar dari layar ujian atau beralih aplikasi.
+        <br><br>
+        Sesi ujian Anda telah dibekukan. Panggil <strong>Pengawas Ruang</strong> untuk membuka kembali akses dengan PIN Pengawas tanpa kehilangan jawaban.
+      </p>
+
+      <div class="form-group" style="max-width: 240px; margin: 0 auto 16px;">
+        <label for="input-pin-buka-kunci" style="color: #f8fafc; text-align: center;">PIN Pengawas / PIN Keluar (4 Digit)</label>
+        <input type="password" id="input-pin-buka-kunci" class="input-pin-4" maxlength="4" placeholder="••••" autocomplete="off" inputmode="numeric" oninput="this.value=this.value.replace(/\D/g,'').slice(0,4)">
+      </div>
+
+      <div style="display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;">
+        <button type="button" class="btn btn-primary" style="flex: 1; min-width: 140px;" onclick="bukaKunciPengawas()">
+          🔓 Lanjutkan Ujian (Pengawas)
+        </button>
+        <button type="button" class="btn btn-danger" style="flex: 1; min-width: 140px;" onclick="akhiriUjianDariLockout()">
+          🚪 Keluar (PIN Keluar)
+        </button>
+      </div>
+
+      <p id="err-buka-kunci" style="color: #ef4444; font-size: 0.8rem; margin-top: 10px; display: none;"></p>
+    </div>
+  </div>
+
+  <!-- MODAL VERIFIKASI PIN KELUAR (4 DIGIT) -->
+  <div class="modal-overlay" id="modal-keluar">
+    <div class="modal-box">
+      <h3 style="color: #fff; font-size: 1.15rem; font-weight: 800; margin-bottom: 8px;">🚪 Keluar &amp; Akhiri Sesi Ujian</h3>
+      <p style="color: var(--text-muted); font-size: 0.82rem; margin-bottom: 16px; line-height: 1.45;">
+        Anda dapat keluar dari aplikasi <strong>kapan saja tanpa perlu menunggu waktu ujian selesai</strong>. Masukkan <strong>PIN Keluar (4 Digit)</strong> yang diberikan oleh pengawas ruang.
+      </p>
+
+      <div class="form-group" style="max-width: 220px; margin: 0 auto 16px;">
+        <label for="input-pin-keluar" style="text-align: center;">PIN Keluar / Pengawas (4 Digit)</label>
+        <input type="password" id="input-pin-keluar" class="input-pin-4" maxlength="4" placeholder="••••" autocomplete="off" inputmode="numeric" oninput="this.value=this.value.replace(/\D/g,'').slice(0,4)">
+      </div>
+
+      <button type="button" class="btn btn-primary" onclick="konfirmasiKeluarUjian()">
+        🚪 Keluar dari Aplikasi
+      </button>
+
+      <button type="button" class="btn btn-outline" style="margin-top: 8px;" onclick="tutupModalKeluar()">
+        Kembali ke Soal Ujian
+      </button>
+
+      <p id="err-keluar" style="color: var(--danger); font-size: 0.8rem; margin-top: 10px; display: none;"></p>
+    </div>
+  </div>
+
+  <!-- ================================================================= -->
+  <!-- LOGIKA CLIENT JAVASCRIPT & SISTEM SALIN ID DOKUMEN                -->
+  <!-- ================================================================= -->
+  <script>
+    // =================================================================
+    // KONFIGURASI FIREBASE CLIENT (TERHUBUNG KE DATABASE ADMIN)
+    // =================================================================
+    const firebaseClientConfig = {
+      apiKey: "AIzaSyB7sCTJ88coMyljSfTpdpcotCdKMNDo01g",
+      authDomain: "cultivated-set-b2w8r.firebaseapp.com",
+      projectId: "cultivated-set-b2w8r",
+      storageBucket: "cultivated-set-b2w8r.firebasestorage.app",
+      messagingSenderId: "815195989226",
+      appId: "1:815195989226:web:f9af36bdd471b6a1ee6393"
+    };
+    const FIRESTORE_DATABASE_ID = "ai-studio-adminujianapp-a77e6759-379b-4822-bf50-d4166a7e85a9";
+    const EXAM_COLLECTION = "data_ujian";
+    // =================================================================
+
+    let db = null;
+    let currentExamData = null;
+    let violationCount = 0;
+    const MAX_VIOLATIONS = Infinity; // Tanpa batas pelanggaran / tanpa kunci permanen
+    let isExamActive = false;
+    let audioContext = null;
+    let activeTimezone = 'Asia/Jayapura'; // Default WIT (UTC+9)
+
+    // Helper DOM aman agar tidak melempar Uncaught TypeError jika elemen null
+    function hideEl(id) {
+      const el = document.getElementById(id);
+      if (el) el.style.display = 'none';
+    }
+
+    function showEl(id, display = 'block') {
+      const el = document.getElementById(id);
+      if (el) el.style.display = display;
+    }
+
+    // Helper normalisasi Link Google Form agar selalu siap disematkan (embed) dalam iframe
+    function formatGoogleFormEmbedUrl(url) {
+      if (!url) return 'about:blank';
+      let cleanUrl = String(url).trim();
+      cleanUrl = cleanUrl.replace(/^[`"']+|[`"']+$/g, '');
+      if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://') && !cleanUrl.startsWith('about:')) {
+        cleanUrl = 'https://' + cleanUrl;
+      }
+      if (cleanUrl.includes('docs.google.com/forms')) {
+        // Ganti /edit menjadi /viewform jika ada
+        cleanUrl = cleanUrl.replace(/\/edit(\?.*)?$/, '/viewform$1');
+        if (!cleanUrl.includes('viewform')) {
+          cleanUrl = cleanUrl.endsWith('/') ? cleanUrl + 'viewform' : cleanUrl + '/viewform';
+        }
+        if (!cleanUrl.includes('embedded=true')) {
+          cleanUrl += (cleanUrl.includes('?') ? '&' : '?') + 'embedded=true';
+        }
+      }
+      return cleanUrl;
+    }
+
+    // Inisialisasi Firebase aman (menghindari duplikasi [DEFAULT] app error)
+    try {
+      if (typeof firebase !== 'undefined' && firebase.initializeApp) {
+        if (!firebase.apps || firebase.apps.length === 0) {
+          firebase.initializeApp(firebaseClientConfig);
+        }
+        db = firebase.firestore();
+      }
+    } catch (err) {
+      console.warn("Firebase client init notice:", err);
+    }
+
+    // Otomatis cek parameter URL: ?id=... atau #...
+    // Otomatis cek parameter URL: ?id=... atau #...
+    window.addEventListener('DOMContentLoaded', () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlId = urlParams.get('id') || (window.location.hash ? window.location.hash.substring(1) : '');
+      if (urlId) {
+        document.getElementById('input-exam-id').value = urlId.trim();
+        cariDataUjian();
+      }
+      checkLatestSavedExam();
+    });
+
+    let videoStream = null;
+    let scanAnimFrame = null;
+
+    async function switchAccessMode(mode) {
+      const pasteTab = document.getElementById('tab-mode-paste');
+      const cameraTab = document.getElementById('tab-mode-camera');
+      const camBox = document.getElementById('camera-scan-box');
+      const manualGroup = document.getElementById('manual-input-group');
+      const errEl = document.getElementById('err-step1');
+      if (errEl) errEl.style.display = 'none';
+
+      if (mode === 'camera') {
+        pasteTab.className = 'btn btn-sm btn-outline';
+        cameraTab.className = 'btn btn-sm btn-primary';
+        camBox.style.display = 'block';
+        manualGroup.style.display = 'none';
+        startCameraScanner();
+      } else {
+        pasteTab.className = 'btn btn-sm btn-primary';
+        cameraTab.className = 'btn btn-sm btn-outline';
+        camBox.style.display = 'none';
+        manualGroup.style.display = 'block';
+        stopCameraScanner();
+      }
+    }
+
+    async function startCameraScanner() {
+      const video = document.getElementById('qr-video');
+      const errEl = document.getElementById('err-step1');
+
+      try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          throw new Error("Kamera tidak didukung pada browser ini.");
+        }
+
+        videoStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment' }
+        });
+        video.srcObject = videoStream;
+        video.setAttribute('playsinline', 'true');
+        video.play();
+
+        scanAnimFrame = requestAnimationFrame(scanQrFrame);
+      } catch (err) {
+        errEl.innerText = "Gagal membuka kamera: " + (err.message || "Izin kamera ditolak.");
+        errEl.style.display = 'block';
+      }
+    }
+
+    function stopCameraScanner() {
+      if (scanAnimFrame) {
+        cancelAnimationFrame(scanAnimFrame);
+        scanAnimFrame = null;
+      }
+      if (videoStream) {
+        videoStream.getTracks().forEach(t => t.stop());
+        videoStream = null;
+      }
+    }
+
+    function scanQrFrame() {
+      const video = document.getElementById('qr-video');
+      const canvas = document.getElementById('qr-canvas');
+
+      if (video && video.readyState === video.HAVE_ENOUGH_DATA) {
+        const ctx = canvas.getContext('2d');
+        canvas.height = video.videoHeight;
+        canvas.width = video.videoWidth;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        if (typeof jsQR !== 'undefined') {
+          const code = jsQR(imageData.data, imageData.width, imageData.height, {
+            inversionAttempts: 'dontInvert'
+          });
+
+          if (code && code.data) {
+            let scannedData = code.data.trim();
+            document.getElementById('input-exam-id').value = scannedData;
+            stopCameraScanner();
+            document.getElementById('camera-scan-box').style.display = 'none';
+            document.getElementById('manual-input-group').style.display = 'block';
+            switchAccessMode('paste');
+            cariDataUjian();
+            return;
+          }
+        }
+      }
+
+      if (videoStream) {
+        scanAnimFrame = requestAnimationFrame(scanQrFrame);
+      }
+    }
+
+    function logoutSesiClient() {
+      if (isExamActive) {
+        bukaModalKeluar();
+        return;
+      }
+      if (confirm('Apakah Anda yakin ingin keluar dan mereset sesi ujian ini?')) {
+        localStorage.removeItem('active_student_exam');
+        sessionStorage.clear();
+        location.reload();
+      }
+    }
+
+    // Tempel Langsung ID dari Clipboard
+    async function pasteFromClipboard() {
+      const errEl = document.getElementById('err-step1');
+      errEl.style.display = 'none';
+
+      try {
+        if (!navigator.clipboard || !navigator.clipboard.readText) {
+          throw new Error("Clipboard API tidak didukung browser ini. Silakan tempel (paste) secara manual.");
+        }
+        const text = await navigator.clipboard.readText();
+        if (text && text.trim()) {
+          document.getElementById('input-exam-id').value = text.trim();
+          cariDataUjian();
+        } else {
+          errEl.innerText = "Clipboard kosong. Pastikan Anda telah menyalin ID Dokumen dari guru/pengawas.";
+          errEl.style.display = 'block';
+        }
+      } catch (err) {
+        const input = document.getElementById('input-exam-id');
+        input.focus();
+        input.select();
+        errEl.innerText = "Tekan lama pada kolom input lalu pilih 'Tempel' (Paste).";
+        errEl.style.display = 'block';
+      }
+    }
+
+    // Periksa ID Ujian Terbaru dari LocalStorage
+    function checkLatestSavedExam() {
+      try {
+        const localBackup = localStorage.getItem('guru_admin_local_exams');
+        if (localBackup) {
+          const list = JSON.parse(localBackup);
+          if (Array.isArray(list) && list.length > 0) {
+            const latest = list[0];
+            const qBox = document.getElementById('quick-fill-box');
+            const qLabel = document.getElementById('latest-exam-label');
+            if (qBox && qLabel && latest && latest.id) {
+              qLabel.innerText = latest.id;
+              qBox.style.display = 'block';
+            }
+          }
+        }
+      } catch (e) {}
+    }
+
+    function fillLatestExamId() {
+      const qLabel = document.getElementById('latest-exam-label');
+      if (qLabel && qLabel.innerText && qLabel.innerText !== '-') {
+        document.getElementById('input-exam-id').value = qLabel.innerText;
+        cariDataUjian();
+      }
+    }
+
+    // =================================================================
+    // PENGAMBILAN DATA UJIAN DARI FIRESTORE (BERDASARKAN ID DOKUMEN / BARCODE)
+    // =================================================================
+    async function cariDataUjian() {
+      const inputEl = document.getElementById('input-exam-id');
+      let rawInput = (inputEl ? inputEl.value : '').trim();
+      const errEl = document.getElementById('err-step1');
+      const btn = document.getElementById('btn-cari-ujian');
+      if (errEl) errEl.style.display = 'none';
+
+      // Bersihkan karakter petik, backtick, whitespace berlebih
+      rawInput = rawInput.replace(/^[`"'\s]+|[`"'\s]+$/g, '');
+      // Bersihkan awalan label yang tersalin seperti "ID Dokumen:", "ID Ujian:", "ID:"
+      rawInput = rawInput.replace(/^(id\s*dokumen|id\s*ujian|id)\s*[:=\-]\s*/i, '').trim();
+      rawInput = rawInput.replace(/[`"']/g, '').trim();
+
+      if (!rawInput) {
+        if (errEl) {
+          errEl.innerText = "Masukkan atau tempel ID Dokumen Ujian / Barcode terlebih dahulu.";
+          errEl.style.display = 'block';
+        }
+        return;
+      }
+
+      let examId = rawInput;
+      let qrParams = {};
+
+      // Ekstraksi parameter konfigurasi dari barcode (JSON / URL Params / ID)
+      if (rawInput.startsWith('{') && rawInput.endsWith('}')) {
+        try {
+          const parsed = JSON.parse(rawInput);
+          if (parsed.id) {
+            examId = parsed.id;
+            qrParams = parsed;
+          }
+        } catch (e) {}
+      } else if (rawInput.includes('?')) {
+        try {
+          const urlObj = new URL(rawInput.includes('://') ? rawInput : `https://example.com/${rawInput}`);
+          if (urlObj.searchParams.has('id')) {
+            examId = urlObj.searchParams.get('id');
+            if (urlObj.searchParams.has('waktuMulai')) qrParams.waktuMulai = urlObj.searchParams.get('waktuMulai');
+            if (urlObj.searchParams.has('waktuSelesai')) qrParams.waktuSelesai = urlObj.searchParams.get('waktuSelesai');
+            if (urlObj.searchParams.has('zonaWaktu')) qrParams.zonaWaktu = urlObj.searchParams.get('zonaWaktu');
+            if (urlObj.searchParams.has('namaUjian')) qrParams.namaUjian = urlObj.searchParams.get('namaUjian');
+            if (urlObj.searchParams.has('pinMasuk')) qrParams.pinMasuk = urlObj.searchParams.get('pinMasuk');
+          }
+        } catch (e) {}
+      } else if (examId.includes('/')) {
+        examId = examId.split('/').pop().trim();
+        if (examId.includes('?id=')) examId = examId.split('?id=').pop().split('&')[0].trim();
+      }
+
+      // Pastikan examId bebas spasi dan tanda kutip
+      examId = String(examId).trim().replace(/[`"'\s]/g, '');
+
+      btn.disabled = true;
+      btn.innerText = "Membaca & Mengonfigurasi Ujian...";
+
+      try {
+        let docData = null;
+
+        // Level 1: Firestore SDK
+        if (db) {
+          try {
+            const docRef = db.collection(EXAM_COLLECTION).doc(examId);
+            const docSnap = await docRef.get();
+            if (docSnap.exists) {
+              docData = docSnap.data();
+              docData.id = docSnap.id;
+            }
+          } catch (sdkErr) {
+            console.warn("Firestore SDK error:", sdkErr);
+          }
+        }
+
+        // Level 2: Direct REST API (mendukung database ID spesifik dan default)
+        if (!docData) {
+          const dbList = [FIRESTORE_DATABASE_ID, '(default)'];
+          for (const targetDb of dbList) {
+            try {
+              const restUrl = `https://firestore.googleapis.com/v1/projects/${firebaseClientConfig.projectId}/databases/${targetDb}/documents/${EXAM_COLLECTION}/${encodeURIComponent(examId)}`;
+              const resp = await fetch(restUrl);
+              if (resp.ok) {
+                const json = await resp.json();
+                if (json && json.fields) {
+                  const parseField = (f) => f ? (f.stringValue || f.integerValue || f.timestampValue || '') : '';
+                  docData = {
+                    id: examId,
+                    namaUjian: parseField(json.fields.namaUjian || json.fields.nama_ujian),
+                    linkGoogleForm: parseField(json.fields.linkGoogleForm || json.fields.link_gform),
+                    pinMasuk: parseField(json.fields.pinMasuk || json.fields.pin_masuk),
+                    pinKeluar: parseField(json.fields.pinKeluar || json.fields.pin_keluar),
+                    pinPengawas: parseField(json.fields.pinPengawas || json.fields.pin_pengawas),
+                    zonaWaktu: parseField(json.fields.zonaWaktu || json.fields.zona_waktu) || 'WIT',
+                    waktuMulai: parseField(json.fields.waktuMulai || json.fields.waktu_mulai) || null,
+                    waktuSelesai: parseField(json.fields.waktuSelesai || json.fields.waktu_selesai) || null,
+                    durasiMenit: parseField(json.fields.durasiMenit || json.fields.durasi_menit) ? Number(parseField(json.fields.durasiMenit || json.fields.durasi_menit)) : null
+                  };
+                  break;
+                }
+              }
+            } catch (restErr) {
+              console.warn(`REST API error on database ${targetDb}:`, restErr);
+            }
+          }
+        }
+
+        // Level 3: Local storage cache
+        if (!docData) {
+          const localBackup = localStorage.getItem('guru_admin_local_exams');
+          if (localBackup) {
+            try {
+              const list = JSON.parse(localBackup);
+              if (Array.isArray(list)) {
+                docData = list.find(e => e.id === examId);
+              }
+            } catch (e) {}
+          }
+        }
+
+        // Fallback langsung dari parameter barcode scan
+        if (!docData && qrParams && qrParams.id) {
+          docData = {
+            id: qrParams.id,
+            namaUjian: qrParams.namaUjian || "Ujian Online (Konfigurasi Scan)",
+            linkGoogleForm: qrParams.linkGoogleForm || qrParams.link_gform || "about:blank",
+            pinMasuk: qrParams.pinMasuk || "1234",
+            pinKeluar: qrParams.pinKeluar || "9999",
+            pinPengawas: qrParams.pinPengawas || "0000",
+            zonaWaktu: qrParams.zonaWaktu || "WIT",
+            waktuMulai: qrParams.waktuMulai || null,
+            waktuSelesai: qrParams.waktuSelesai || null
+          };
+        }
+
+        if (!docData) {
+          throw new Error(`Data ujian dengan ID "${examId}" tidak ditemukan. Pastikan ID Dokumen atau Barcode benar.`);
+        }
+
+        // Terapkan konfigurasi waktu dari barcode scan jika tersedia
+        if (qrParams.waktuMulai) docData.waktuMulai = qrParams.waktuMulai;
+        if (qrParams.waktuSelesai) docData.waktuSelesai = qrParams.waktuSelesai;
+        if (qrParams.zonaWaktu) docData.zonaWaktu = qrParams.zonaWaktu;
+        if (qrParams.namaUjian) docData.namaUjian = qrParams.namaUjian;
+        if (qrParams.pinMasuk) docData.pinMasuk = qrParams.pinMasuk;
+
+        currentExamData = docData;
+
+        // Buka & Konfigurasi Zona Waktu
+        const z = (currentExamData.zonaWaktu || currentExamData.zona_waktu || 'WIT').toUpperCase();
+        if (z === 'WIT') activeTimezone = 'Asia/Jayapura';
+        else if (z === 'WITA') activeTimezone = 'Asia/Makassar';
+        else activeTimezone = 'Asia/Jakarta';
+
+        // Tampilkan Badge Konfigurasi Jadwal Mulai & Selesai
+        const schedEl = document.getElementById('val-schedule-badge');
+        const waktuMulai = currentExamData.waktuMulai || currentExamData.waktu_mulai;
+        const waktuSelesai = currentExamData.waktuSelesai || currentExamData.waktu_selesai;
+        if (schedEl) {
+          if (waktuMulai || waktuSelesai) {
+            const formatAmPmClient = (iso) => {
+              if (!iso) return '-';
+              try {
+                const timePart = iso.includes('T') ? iso.split('T')[1] : iso;
+                const [hStr, mStr] = timePart.split(':');
+                let h24 = parseInt(hStr, 10);
+                let min = parseInt(mStr, 10);
+                if (isNaN(h24)) return iso;
+                const ampm = h24 >= 12 ? 'PM' : 'AM';
+                let h12 = h24 % 12;
+                if (h12 === 0) h12 = 12;
+                return `${String(h12).padStart(2, '0')}:${String(min || 0).padStart(2, '0')} ${ampm}`;
+              } catch (e) { return iso; }
+            };
+            schedEl.innerText = `📅 Waktu: ${formatAmPmClient(waktuMulai)} s/d ${formatAmPmClient(waktuSelesai)} (${z})`;
+            schedEl.style.display = 'inline-block';
+          } else {
+            schedEl.style.display = 'none';
+          }
+        }
+
+        // Sinkronkan jam & timer penghitung mundur secara live
+        updateClientClock();
+
+        // Validasi waktu mulai & waktu selesai
+        const now = new Date();
+
+        if (waktuMulai) {
+          const startTime = parseDateInZone(waktuMulai, z);
+          if (startTime && !isNaN(startTime.getTime()) && now < startTime) {
+            const formatMulai = formatDateDisplay(startTime, z);
+            throw new Error(`⛔ Ujian belum dibuka! Jadwal dimulai pada ${formatMulai} (${z}).`);
+          }
+        }
+
+        if (waktuSelesai) {
+          const endTime = parseDateInZone(waktuSelesai, z);
+          if (endTime && !isNaN(endTime.getTime()) && now > endTime) {
+            const formatSelesai = formatDateDisplay(endTime, z);
+            throw new Error(`⛔ Waktu ujian telah berakhir pada ${formatSelesai} (${z}).`);
+          }
+        }
+
+        // Tangkap pinMasuk secara otomatis & langsung buka soal ujian
+        const agreeCheck = document.getElementById('check-volume-agree');
+        if (agreeCheck) agreeCheck.checked = true;
+
+        masukRuangUjianFullscreen();
+
+      } catch (err) {
+        if (errEl) {
+          errEl.innerText = err.message || "Gagal memuat data ujian. Pastikan ID Dokumen benar.";
+          errEl.style.display = 'block';
+        }
+      } finally {
+        btn.disabled = false;
+        btn.innerText = "🚀 Buka Soal Ujian (PIN Otomatis) ➡️";
+      }
+    }
+
+    function kembaliKeScan() {
+      hideEl('screen-step2');
+      hideEl('screen-step-security');
+      showEl('screen-step1', 'flex');
+      currentExamData = null;
+    }
+
+    function kembaliKePin() {
+      hideEl('screen-step-security');
+      showEl('screen-step1', 'flex');
+    }
+
+    // =================================================================
+    // SATU-SATUNYA PENGHITUNG MUNDUR DURASI WAKTU UJIAN DI CLIENT
+    // =================================================================
+    function updateClientClock() {
+      const now = new Date();
+      const el = document.getElementById('client-clock');
+
+      // Tampilkan jam live di navbar halaman depan
+      if (el) {
+        const z = (currentExamData ? (currentExamData.zonaWaktu || currentExamData.zona_waktu) : 'WIT') || 'WIT';
+        const tzMap = {
+          'WIT': 'Asia/Jayapura',
+          'WITA': 'Asia/Makassar',
+          'WIB': 'Asia/Jakarta'
+        };
+        const tz = tzMap[String(z).toUpperCase()] || 'Asia/Jayapura';
+        try {
+          const timeStr = new Intl.DateTimeFormat('id-ID', {
+            timeZone: tz,
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+          }).format(now);
+          el.innerText = `${String(z).toUpperCase()}: ${timeStr}`;
+        } catch (e) {
+          el.innerText = `${String(z).toUpperCase()}: --:--:--`;
+        }
+      }
+
+      // Jalankan satu-satunya penghitung mundur durasi waktu ujian
+      updateExamCountdown(now);
+    }
+
+    function updateExamCountdown(now) {
+      const timerEl = document.getElementById('exam-countdown-timer');
+      if (!timerEl) return;
+
+      if (!isExamActive || !currentExamData) {
+        timerEl.innerText = '⏳ Sisa: --:--:--';
+        timerEl.style.background = '#0f2942';
+        timerEl.style.borderColor = '#38bdf8';
+        timerEl.style.color = '#38bdf8';
+        return;
+      }
+
+      const waktuSelesai = currentExamData.waktuSelesai || currentExamData.waktu_selesai;
+      const waktuMulai = currentExamData.waktuMulai || currentExamData.waktu_mulai;
+      const durasiMenit = currentExamData.durasiMenit || currentExamData.durasi_menit;
+      const z = (currentExamData.zonaWaktu || currentExamData.zona_waktu || 'WIT').toUpperCase();
+
+      let endTime = null;
+      if (waktuSelesai) {
+        endTime = parseDateInZone(waktuSelesai, z);
+      } else if (waktuMulai && durasiMenit) {
+        const start = parseDateInZone(waktuMulai, z);
+        if (start && !isNaN(start.getTime())) {
+          endTime = new Date(start.getTime() + Number(durasiMenit) * 60 * 1000);
+        }
+      }
+
+      if (!endTime || isNaN(endTime.getTime())) {
+        timerEl.innerText = '⏳ Waktu Bebas';
+        timerEl.style.background = '#064e3b';
+        timerEl.style.borderColor = '#10b981';
+        timerEl.style.color = '#6ee7b7';
+        return;
+      }
+
+      const diffMs = endTime.getTime() - now.getTime();
+      if (diffMs <= 0) {
+        timerEl.innerText = '⏰ Waktu Ujian Habis!';
+        timerEl.style.background = '#7f1d1d';
+        timerEl.style.borderColor = '#ef4444';
+        timerEl.style.color = '#fee2e2';
+        return;
+      }
+
+      const totalSec = Math.floor(diffMs / 1000);
+      const hours = Math.floor(totalSec / 3600);
+      const minutes = Math.floor((totalSec % 3600) / 60);
+      const seconds = totalSec % 60;
+      const pad = (n) => String(n).padStart(2, '0');
+
+      timerEl.innerText = `⏳ Sisa: ${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+
+      // Jika sisa waktu <= 5 menit (300 detik), berikan indikator peringatan visual
+      if (totalSec <= 300) {
+        timerEl.style.background = '#7c2d12';
+        timerEl.style.borderColor = '#f97316';
+        timerEl.style.color = '#ffedd5';
+      } else {
+        timerEl.style.background = '#0f2942';
+        timerEl.style.borderColor = '#38bdf8';
+        timerEl.style.color = '#38bdf8';
+      }
+    }
+
+    updateClientClock();
+    setInterval(updateClientClock, 1000);
+
+    function parseDateInZone(dateStr, zone) {
+      if (!dateStr) return null;
+      let cleanStr = String(dateStr).trim().replace(' ', 'T');
+      if (cleanStr.includes('+') || cleanStr.endsWith('Z')) {
+        return new Date(cleanStr);
+      }
+      const offsetMap = {
+        'WIT': '+09:00',
+        'WITA': '+08:00',
+        'WIB': '+07:00'
+      };
+      const z = (zone || 'WIT').toUpperCase();
+      const offset = offsetMap[z] || '+09:00';
+      if (cleanStr.length === 16) cleanStr += ':00';
+      return new Date(cleanStr + offset);
+    }
+
+    function formatDateDisplay(dateObj, zone) {
+      if (!dateObj || isNaN(dateObj.getTime())) return '-';
+      const tzMap = {
+        'WIT': 'Asia/Jayapura',
+        'WITA': 'Asia/Makassar',
+        'WIB': 'Asia/Jakarta'
+      };
+      const z = (zone || 'WIT').toUpperCase();
+      const timeZone = tzMap[z] || 'Asia/Jayapura';
+      return new Intl.DateTimeFormat('id-ID', {
+        timeZone,
+        weekday: 'long',
+        day: '2-digit',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      }).format(dateObj);
+    }
+
+    // =================================================================
+    // VERIFIKASI PIN MASUK (4 DIGIT) & JADWAL
+    // =================================================================
+    function verifikasiPinMasuk() {
+      const pinInput = document.getElementById('input-pin-masuk').value.trim();
+      const errEl = document.getElementById('err-step2');
+      errEl.style.display = 'none';
+
+      if (!currentExamData) return;
+
+      const validPinMasuk = String(currentExamData.pinMasuk || currentExamData.pin_masuk || '').trim();
+      const validPinPengawas = String(currentExamData.pinPengawas || currentExamData.pin_pengawas || '').trim();
+
+      if (pinInput !== validPinMasuk && pinInput !== validPinPengawas) {
+        errEl.innerText = "PIN Masuk salah! Masukkan 4 digit PIN yang diberikan oleh pengawas.";
+        errEl.style.display = 'block';
+        return;
+      }
+
+      const isSupervisor = (pinInput === validPinPengawas);
+      const waktuMulai = currentExamData.waktuMulai || currentExamData.waktu_mulai;
+      const waktuSelesai = currentExamData.waktuSelesai || currentExamData.waktu_selesai;
+      const z = (currentExamData.zonaWaktu || currentExamData.zona_waktu || 'WIT').toUpperCase();
+      const now = new Date();
+
+      if (!isSupervisor) {
+        if (waktuMulai) {
+          const startTime = parseDateInZone(waktuMulai, z);
+          if (startTime && !isNaN(startTime.getTime()) && now < startTime) {
+            const formatMulai = formatDateDisplay(startTime, z);
+            errEl.innerText = `⛔ Ujian belum dibuka! Jadwal dimulai pada ${formatMulai} (${z}).`;
+            errEl.style.display = 'block';
+            return;
+          }
+        }
+
+        if (waktuSelesai) {
+          const endTime = parseDateInZone(waktuSelesai, z);
+          if (endTime && !isNaN(endTime.getTime()) && now > endTime) {
+            const formatSelesai = formatDateDisplay(endTime, z);
+            errEl.innerText = `⛔ Waktu ujian telah berakhir pada ${formatSelesai} (${z}).`;
+            errEl.style.display = 'block';
+            return;
+          }
+        }
+      }
+
+      masukRuangUjianFullscreen();
+    }
+
+    // =================================================================
+    // SISTEM AUDIO WEB & SIRINE ALARM
+    // =================================================================
+    function getAudioContext() {
+      if (!audioContext) {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (audioContext.state === 'suspended') {
+        audioContext.resume();
+      }
+      return audioContext;
+    }
+
+    function testVolumeSound() {
+      try {
+        const ctx = getAudioContext();
+        const now = ctx.currentTime;
+        const notes = [523.25, 659.25, 783.99, 1046.50];
+        notes.forEach((freq, idx) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.type = 'triangle';
+          osc.frequency.value = freq;
+          gain.gain.setValueAtTime(0, now + (idx * 0.1));
+          gain.gain.linearRampToValueAtTime(0.85, now + (idx * 0.1) + 0.04);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + (idx * 0.1) + 0.28);
+          osc.start(now + (idx * 0.1));
+          osc.stop(now + (idx * 0.1) + 0.3);
+        });
+
+        const bar = document.getElementById('volume-indicator-bar');
+        if (bar) {
+          bar.style.width = '95%';
+          setTimeout(() => { bar.style.width = '80%'; }, 500);
+        }
+      } catch (e) {
+        console.warn("Audio test error:", e);
+      }
+    }
+
+    function playViolationAlarm() {
+      try {
+        const ctx = getAudioContext();
+        const now = ctx.currentTime;
+        const duration = 2.5;
+
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'sawtooth';
+        
+        for (let i = 0; i < 5; i++) {
+          osc.frequency.setValueAtTime(700, now + (i * 0.5));
+          osc.frequency.linearRampToValueAtTime(1050, now + (i * 0.5) + 0.25);
+          osc.frequency.linearRampToValueAtTime(700, now + (i * 0.5) + 0.5);
+        }
+
+        gain.gain.setValueAtTime(1.0, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+        osc.start(now);
+        osc.stop(now + duration);
+
+        if (navigator.vibrate) {
+          navigator.vibrate([200, 100, 200, 100, 400]);
+        }
+      } catch (e) {
+        console.warn("Alarm audio error:", e);
+      }
+    }
+
+    async function checkAcousticVolumeWithMic() {
+      const label = document.getElementById('mic-status-label');
+      label.style.display = 'inline-block';
+      label.innerText = 'Mendengarkan...';
+      label.style.color = '#38bdf8';
+
+      testVolumeSound();
+
+      try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          label.innerText = 'Mic tdk didukung';
+          return;
+        }
+
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const ctx = getAudioContext();
+        const source = ctx.createMediaStreamSource(stream);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 256;
+        source.connect(analyser);
+
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+        let maxVolume = 0;
+
+        const checkInterval = setInterval(() => {
+          analyser.getByteFrequencyData(dataArray);
+          let sum = 0;
+          for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+          const avg = sum / dataArray.length;
+          if (avg > maxVolume) maxVolume = avg;
+        }, 50);
+
+        setTimeout(() => {
+          clearInterval(checkInterval);
+          stream.getTracks().forEach(t => t.stop());
+
+          if (maxVolume > 15) {
+            label.innerText = '✅ Suara Terdeteksi (>70%)';
+            label.style.color = '#34d399';
+            document.getElementById('check-volume-agree').checked = true;
+            toggleStartExamButton();
+          } else {
+            label.innerText = '⚠️ Terlalu Kecil / Hening';
+            label.style.color = '#fbbf24';
+          }
+        }, 1200);
+
+      } catch (err) {
+        label.innerText = 'Izin mic dilewati';
+        label.style.color = '#94a3b8';
+      }
+    }
+
+    function toggleStartExamButton() {
+      const checkbox = document.getElementById('check-volume-agree');
+      const btn = document.getElementById('btn-start-exam-final');
+      btn.disabled = !checkbox.checked;
+    }
+
+    // =================================================================
+    // MASUK RUANG UJIAN FULLSCREEN
+    // =================================================================
+    let isLockdownBound = false;
+
+    function masukRuangUjianFullscreen() {
+      const agreeCheck = document.getElementById('check-volume-agree');
+      if (agreeCheck) agreeCheck.checked = true;
+
+      hideEl('err-security');
+      hideEl('err-step1');
+
+      try {
+        getAudioContext();
+      } catch (e) {}
+
+      hideEl('top-navbar');
+      hideEl('screen-step1');
+      hideEl('screen-step2');
+      hideEl('screen-step-security');
+      
+      stopContinuousAlarm();
+      hideEl('lockout-screen');
+      hideEl('modal-fullscreen-warning');
+      window.__examStartTime = Date.now();
+
+      showEl('exam-screen', 'flex');
+      isExamActive = true;
+      violationCount = 0;
+
+      const titleEl = document.getElementById('active-exam-title');
+      if (titleEl) {
+        titleEl.innerText = (currentExamData && (currentExamData.namaUjian || currentExamData.nama_ujian)) || 'Ujian Online';
+      }
+
+      const zoneEl = document.getElementById('active-exam-zone');
+      if (zoneEl) {
+        zoneEl.innerText = (currentExamData && (currentExamData.zonaWaktu || currentExamData.zona_waktu)) || 'WIT';
+      }
+
+      const linkForm = currentExamData ? (currentExamData.linkGoogleForm || currentExamData.link_gform) : '';
+      const finalEmbedUrl = formatGoogleFormEmbedUrl(linkForm);
+      const frameEl = document.getElementById('gform-frame');
+      if (frameEl) {
+        frameEl.src = finalEmbedUrl;
+      }
+
+      if (document.documentElement.requestFullscreen) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else if (document.documentElement.webkitRequestFullscreen) {
+        document.documentElement.webkitRequestFullscreen();
+      }
+
+      setupLockdownListeners();
+    }
+
+    function setupLockdownListeners() {
+      if (isLockdownBound) return;
+      isLockdownBound = true;
+
+      // Deteksi hanya jika aplikasi benar-benar di-minimize atau beralih aplikasi (visibility hidden)
+      document.addEventListener('visibilitychange', () => {
+        if (!isExamActive) return;
+        if (Date.now() - (window.__examStartTime || 0) < 5000) return;
+        if (document.visibilityState === 'hidden') {
+          handleExamViolation();
+        }
+      });
+
+      window.addEventListener('keydown', (e) => {
+        if (!isExamActive) return;
+
+        if (['F12', 'F11', 'F5', 'F1'].includes(e.key)) {
+          e.preventDefault();
+          handleExamViolation();
+          return false;
+        }
+
+        if (e.ctrlKey && e.shiftKey && ['I', 'i', 'J', 'j', 'C', 'c'].includes(e.key)) {
+          e.preventDefault();
+          handleExamViolation();
+          return false;
+        }
+
+        if (e.ctrlKey && ['c', 'v', 'x', 'p', 's', 'a', 'w', 't', 'r', 'u'].includes(e.key.toLowerCase())) {
+          e.preventDefault();
+          return false;
+        }
+
+        if (e.altKey || e.metaKey) {
+          handleExamViolation();
+        }
+      });
+
+      window.onbeforeunload = function() {
+        if (isExamActive) {
+          return "Sesi ujian sedang berjalan! Seluruh progres Anda akan hilang.";
+        }
+      };
+    }
+
+    function kembalikanFullscreen() {
+      hideEl('modal-fullscreen-warning');
+    }
+
+    let alarmInterval = null;
+
+    function startContinuousAlarm() {
+      if (alarmInterval) return;
+      playViolationAlarm();
+      alarmInterval = setInterval(() => {
+        if (isExamActive) {
+          playViolationAlarm();
+        } else {
+          stopContinuousAlarm();
+        }
+      }, 2500);
+    }
+
+    function stopContinuousAlarm() {
+      if (alarmInterval) {
+        clearInterval(alarmInterval);
+        alarmInterval = null;
+      }
+    }
+
+    function handleExamViolation() {
+      if (!isExamActive) return;
+      // Jangan pernah membunyikan alarm jika baru saja membuka halaman ujian (grace period 5 detik)
+      if (Date.now() - (window.__examStartTime || 0) < 5000) return;
+
+      violationCount++;
+      startContinuousAlarm();
+      kunciUjianPermanen();
+
+      const banner = document.getElementById('warning-banner');
+      const countSpan = document.getElementById('violation-count');
+      if (countSpan) countSpan.innerText = violationCount;
+      if (banner) {
+        banner.style.display = 'block';
+      }
+    }
+
+    function kunciUjianPermanen() {
+      const lockoutEl = document.getElementById('lockout-screen');
+      if (lockoutEl) lockoutEl.style.display = 'flex';
+      hideEl('modal-fullscreen-warning');
+      const pinBuka = document.getElementById('input-pin-buka-kunci');
+      if (pinBuka) {
+        pinBuka.value = '';
+        pinBuka.focus();
+      }
+      hideEl('err-buka-kunci');
+    }
+
+    function bukaKunciPengawas() {
+      const pinInput = document.getElementById('input-pin-buka-kunci').value.trim();
+      const errEl = document.getElementById('err-buka-kunci');
+      if (errEl) errEl.style.display = 'none';
+
+      if (!currentExamData) {
+        hideEl('lockout-screen');
+        return;
+      }
+
+      const validPinPengawas = String(currentExamData.pinPengawas || currentExamData.pin_pengawas || '').trim();
+      const validPinKeluar = String(currentExamData.pinKeluar || currentExamData.pin_keluar || '').trim();
+
+      if (pinInput === validPinPengawas) {
+        // Buka kunci dan lanjutkan ujian tanpa mereset soal Google Form atau jawaban siswa!
+        stopContinuousAlarm();
+        hideEl('lockout-screen');
+        hideEl('modal-fullscreen-warning');
+        kembalikanFullscreen();
+        isExamActive = true;
+      } else if (pinInput === validPinKeluar) {
+        akhiriUjianDariLockout();
+      } else {
+        if (errEl) {
+          errEl.innerText = "PIN Pengawas salah! Masukkan 4 digit PIN Pengawas untuk melanjutkan ujian.";
+          errEl.style.display = 'block';
+        }
+      }
+    }
+
+    function akhiriUjianDariLockout() {
+      const pinInput = document.getElementById('input-pin-buka-kunci').value.trim();
+      const errEl = document.getElementById('err-buka-kunci');
+      if (errEl) errEl.style.display = 'none';
+
+      if (!currentExamData) {
+        stopContinuousAlarm();
+        hideEl('lockout-screen');
+        isExamActive = false;
+        location.reload();
+        return;
+      }
+
+      const validPinKeluar = String(currentExamData.pinKeluar || currentExamData.pin_keluar || '').trim();
+      const validPinPengawas = String(currentExamData.pinPengawas || currentExamData.pin_pengawas || '').trim();
+
+      if (pinInput === validPinKeluar || pinInput === validPinPengawas) {
+        stopContinuousAlarm();
+        hideEl('lockout-screen');
+        hideEl('modal-fullscreen-warning');
+        isExamActive = false;
+
+        if (document.exitFullscreen) {
+          document.exitFullscreen().catch(() => {});
+        } else if (document.webkitExitFullscreen) {
+          document.webkitExitFullscreen();
+        }
+
+        hideEl('exam-screen');
+        showEl('top-navbar', 'flex');
+        showEl('screen-step1', 'flex');
+
+        const frame = document.getElementById('gform-frame');
+        if (frame) frame.src = 'about:blank';
+        const idInput = document.getElementById('input-exam-id');
+        if (idInput) idInput.value = '';
+        currentExamData = null;
+        violationCount = 0;
+      } else {
+        if (errEl) {
+          errEl.innerText = "PIN Keluar salah! Masukkan 4 digit PIN Keluar atau PIN Pengawas yang sah.";
+          errEl.style.display = 'block';
+        }
+      }
+    }
+
+    // =================================================================
+    // SELESAI UJIAN (PIN KELUAR 4 DIGIT)
+    // =================================================================
+    function bukaModalKeluar() {
+      showEl('modal-keluar', 'flex');
+      const pinEl = document.getElementById('input-pin-keluar');
+      if (pinEl) {
+        pinEl.value = '';
+        pinEl.focus();
+      }
+      hideEl('err-keluar');
+    }
+
+    function tutupModalKeluar() {
+      hideEl('modal-keluar');
+    }
+
+    function konfirmasiKeluarUjian() {
+      const pinKeluar = document.getElementById('input-pin-keluar').value.trim();
+      const errEl = document.getElementById('err-keluar');
+      if (errEl) errEl.style.display = 'none';
+
+      if (!currentExamData) {
+        tutupModalKeluar();
+        isExamActive = false;
+        location.reload();
+        return;
+      }
+
+      const validPinKeluar = String(currentExamData.pinKeluar || currentExamData.pin_keluar || '').trim();
+      const validPinPengawas = String(currentExamData.pinPengawas || currentExamData.pin_pengawas || '').trim();
+
+      if (pinKeluar === validPinKeluar || pinKeluar === validPinPengawas) {
+        tutupModalKeluar();
+        isExamActive = false;
+        stopContinuousAlarm();
+
+        if (document.exitFullscreen) {
+          document.exitFullscreen().catch(() => {});
+        } else if (document.webkitExitFullscreen) {
+          document.webkitExitFullscreen();
+        }
+
+        hideEl('exam-screen');
+        showEl('top-navbar', 'flex');
+        showEl('screen-step1', 'flex');
+
+        const frame = document.getElementById('gform-frame');
+        if (frame) frame.src = 'about:blank';
+        const idInput = document.getElementById('input-exam-id');
+        if (idInput) idInput.value = '';
+        currentExamData = null;
+        violationCount = 0;
+      } else {
+        if (errEl) {
+          errEl.innerText = "PIN Keluar salah! Masukkan 4 digit PIN Keluar dari pengawas untuk keluar kapan saja tanpa menunggu waktu selesai.";
+          errEl.style.display = 'block';
+        }
+      }
+    }
+  </script>
+
+  <!-- ANDROID BRIDGE: laporkan status ujian ke native & cegah hitungan pelanggaran ganda -->
+  <script>
+  (function () {
+    if (!window.AndroidBridge) return;
+    var last = false;
+    try { AndroidBridge.onExamState(false); } catch (e) {}
+    setInterval(function () {
+      try {
+        if (typeof isExamActive !== 'undefined' && isExamActive !== last) {
+          last = isExamActive;
+          AndroidBridge.onExamState(last);
+        }
+      } catch (e) {}
+    }, 300);
+
+    var originalViolation = handleExamViolation;
+    handleExamViolation = function () {
+      var t = Date.now();
+      if (t - (window.__lastViolation || 0) < 2000) return;
+      window.__lastViolation = t;
+      originalViolation();
+    };
+  })();
+  </script>
+</body>
+</html>

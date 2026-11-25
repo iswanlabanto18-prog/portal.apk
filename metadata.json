@@ -1,0 +1,8 @@
+{
+  "name": "Remix Portal Siswa CBT",
+  "description": "Aplikasi ujian siswa CBT dengan sistem kiosk, kunci layar, deteksi kecurangan, dan integrasi WebView aman.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
